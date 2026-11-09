@@ -1,0 +1,22 @@
+{
+  "name": "medi-sync",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MEDI SYNC - Hospital Management System",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/api & npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/web",
+    "test": "npm run test --workspace=apps/api",
+    "db:setup": "npm run db:setup --workspace=apps/api",
+    "db:reset": "npm run db:reset --workspace=apps/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

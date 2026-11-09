@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Typecheck API
+        run: npm run build --workspace=apps/api
+      - name: Prepare test database
+        working-directory: apps/api
+        env:
+          DATABASE_URL: file:./test.db
+        run: npx prisma db push --skip-generate
+      - name: Tests
+        working-directory: apps/api
+        env:
+          DATABASE_URL: file:./test.db
+          NODE_ENV: test
+        run: npm test
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Build web
+        run: npm run build --workspace=apps/web
