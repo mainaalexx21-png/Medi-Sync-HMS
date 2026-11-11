@@ -123,6 +123,8 @@ model Staff {
   firstName    String
   lastName     String
   jobTitle     String
+  /// Job function inside the CLINICAL role: DOCTOR or NURSE. Capability only.
+  clinicalRole String?
   licenseNo    String?
   phone        String?
   departmentId String?

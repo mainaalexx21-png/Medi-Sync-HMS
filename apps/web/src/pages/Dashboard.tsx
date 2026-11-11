@@ -1,43 +1,36 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { landingFor, ROLE_LABELS, useAuth } from '../lib/auth';
+import { jobFunctionLabel, landingFor, ROLE_LABELS, useAuth } from '../lib/auth';
 import { money } from '../lib/format';
 import { Card, CardHeader, EmptyState, Loading, PageHeader, Stat, StatusBadge } from '../components/ui';
 
 const QUICK_LINKS: Record<string, { to: string; label: string; hint: string }[]> = {
-  DOCTOR: [
+  CLINICAL: [
     { to: '/doctor', label: 'My day', hint: 'Schedule and waiting patients' },
     { to: '/patients', label: 'Find a patient', hint: 'Search records by name or MRN' },
-    { to: '/appointments', label: 'Appointments', hint: 'Review and rebook' },
+    { to: '/queue', label: 'Queue', hint: 'Triage and call the next patient' },
+    { to: '/wards', label: 'Wards', hint: 'Admitted patients and beds' },
   ],
-  RECEPTIONIST: [
+  FRONT_DESK: [
     { to: '/reception', label: 'Check in a patient', hint: 'Issue a queue ticket' },
     { to: '/appointments', label: 'Book an appointment', hint: 'Find a free slot' },
     { to: '/patients/new', label: 'Register a patient', hint: 'Create a medical record' },
   ],
-  PHARMACIST: [
-    { to: '/pharmacy', label: 'Dispense prescriptions', hint: 'Pending queue' },
-    { to: '/pharmacy?tab=stock', label: 'Stock alerts', hint: 'Low and expiring items' },
+  DIAGNOSTICS: [
+    { to: '/lab', label: 'Diagnostics worklist', hint: 'Collect samples, imaging and results' },
+    { to: '/pharmacy', label: 'Prescriptions', hint: 'Dispense and check stock' },
   ],
-  LAB_TECH: [
-    { to: '/lab', label: 'Lab worklist', hint: 'Collect samples and enter results' },
-  ],
-  BILLING: [
+  FINANCE: [
     { to: '/billing', label: 'Invoices', hint: 'Outstanding balances and payments' },
-    { to: '/reports', label: 'Financial reports', hint: 'Revenue and outstanding' },
-  ],
-  HR_MANAGER: [
+    { to: '/pharmacy?tab=stock', label: 'Stock & suppliers', hint: 'Levels, receipts and expiries' },
     { to: '/reports', label: 'Management reports', hint: 'Volume, waits, revenue' },
-    { to: '/admin?tab=users', label: 'Staff accounts', hint: 'Roles and access' },
+    { to: '/admin?tab=users', label: 'Staff records & rota', hint: 'Accounts and availability' },
   ],
-  MEDICAL_RECORDS: [
-    { to: '/patients', label: 'Records', hint: 'Retrieve and correct records' },
-    { to: '/admin?tab=break-glass', label: 'Access reviews', hint: 'Break-glass flags' },
-  ],
-  IT_ADMIN: [
+  SYSTEM_ADMIN: [
     { to: '/admin?tab=users', label: 'Users & roles', hint: 'Accounts and MFA resets' },
     { to: '/admin?tab=audit', label: 'Audit trail', hint: 'Immutable access log' },
+    { to: '/admin?tab=settings', label: 'Configuration & backups', hint: 'System settings and runbooks' },
   ],
   AUDITOR: [
     { to: '/reports', label: 'Aggregated reports', hint: 'De-identified metrics' },
@@ -65,7 +58,7 @@ export default function Dashboard() {
   const doctorDay = useQuery({
     queryKey: ['doctor-today-cards'],
     queryFn: () => api.get<any>('/doctor/today'),
-    enabled: me.user.role === 'DOCTOR',
+    enabled: me.clinicalRole === 'DOCTOR',
   });
 
   const links = QUICK_LINKS[me.user.role] ?? [{ to: landingFor(me), label: 'Your workspace', hint: 'Continue where you left off' }];
@@ -75,11 +68,11 @@ export default function Dashboard() {
     <div>
       <PageHeader
         title={`Good day, ${me.profile?.name?.split(' ')[0] ?? 'there'}`}
-        description={`${ROLE_LABELS[me.user.role] ?? me.user.role} dashboard · MEDI SYNC`}
+        description={`${ROLE_LABELS[me.user.role] ?? me.user.role}${jobFunctionLabel(me) ? ` · ${jobFunctionLabel(me)}` : ''} dashboard · MEDI SYNC`}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {me.user.role === 'DOCTOR' && doctorDay.data ? (
+        {me.clinicalRole === 'DOCTOR' && doctorDay.data ? (
           <>
             <Stat label="Appointments today" value={doctorDay.data.appointments.length} tone="brand" />
             <Stat label="Waiting now" value={doctorDay.data.queue.filter((q: any) => q.status === 'WAITING').length} tone="warning" />
@@ -120,7 +113,7 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
-          {me.user.role === 'DOCTOR' && doctorDay.data && (
+          {me.clinicalRole === 'DOCTOR' && doctorDay.data && (
             <div className="border-t border-slate-100 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next patients</p>
               <ul className="mt-2 divide-y divide-slate-100">

@@ -1,22 +1,19 @@
 /**
  * Seed data for MEDI SYNC.
  *
- * Demo accounts (all share the same password, MFA secret in dev):
- *   IT           admin.it@medisync.test
- *   HR           hr@medisync.test
- *   Reception    reception@medisync.test
- *   Billing      billing@medisync.test
- *   Records      records@medisync.test
- *   Doctor       doctor.amina@medisync.test   (General Medicine)
- *   Doctor       doctor.brian@medisync.test   (Pediatrics)
- *   Nurse        nurse@medisync.test
- *   Pharmacist   pharmacist@medisync.test
- *   Lab tech     lab@medisync.test
- *   Auditor      auditor@medisync.test        (de-identified only, expiring grant)
- *   Vendor       vendor@medisync.test         (scoped, expiring grant)
- *   Patient      grace@example.test           (no MFA yet - demonstrates enrolment)
- *   Patient      peter@example.test
- *   Guardian     guardian@example.test        (consented scopes on Grace)
+ * Demo accounts (all share the same password, MFA secret in dev). One account
+ * per job title, five staff roles:
+ *   FRONT_DESK    reception@medisync.test (front desk), records@medisync.test (records)
+ *   CLINICAL      doctor.amina@medisync.test (doctor), doctor.brian@medisync.test (doctor),
+ *                 nurse@medisync.test (nurse)
+ *   DIAGNOSTICS   lab@medisync.test (lab), radiology@medisync.test (imaging),
+ *                 pharmacist@medisync.test (pharmacy)
+ *   FINANCE       billing@medisync.test (billing), hr@medisync.test (staff & rosters)
+ *   SYSTEM_ADMIN  admin.it@medisync.test (no clinical access by design)
+ *   External      auditor@medisync.test (de-identified only, expiring grant),
+ *                 vendor@medisync.test  (scoped, expiring grant)
+ *   Portal        grace@example.test (no MFA yet - demonstrates enrolment),
+ *                 peter@example.test, guardian@example.test (consented scopes on Grace)
  *
  * Password: MediSync#2026   MFA secret (TOTP): JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
  */
@@ -81,7 +78,7 @@ async function main() {
     prisma.department.create({ data: { name: 'General Medicine', code: 'GEN' } }),
     prisma.department.create({ data: { name: 'Pediatrics', code: 'PED' } }),
     prisma.department.create({ data: { name: 'Pharmacy', code: 'PHA', type: 'PHARMACY' } }),
-    prisma.department.create({ data: { name: 'Laboratory', code: 'LAB', type: 'LAB' } }),
+    prisma.department.create({ data: { name: 'Laboratory & Imaging', code: 'LAB', type: 'LAB' } }),
     prisma.department.create({ data: { name: 'Administration', code: 'ADM', type: 'ADMIN' } }),
   ]);
 
@@ -89,21 +86,23 @@ async function main() {
   // Staff accounts
   // -------------------------------------------------------------------------
   type StaffSpec = {
-    email: string; role: string; first: string; last: string; job: string;
+    email: string; role: string; clinicalRole?: string; first: string; last: string; job: string;
     dept?: string; mfa?: boolean; license?: string;
   };
 
+  // Five roles, one account per job title. clinicalRole only applies to CLINICAL.
   const staffSpecs: StaffSpec[] = [
-    { email: 'doctor.amina@medisync.test', role: 'DOCTOR', first: 'Amina', last: 'Odhiambo', job: 'Consultant Physician', dept: general.id, mfa: true, license: 'KMPDC-11284' },
-    { email: 'doctor.brian@medisync.test', role: 'DOCTOR', first: 'Brian', last: 'Kiptoo', job: 'Paediatrician', dept: pediatrics.id, mfa: true, license: 'KMPDC-20411' },
-    { email: 'nurse@medisync.test', role: 'NURSE', first: 'Faith', last: 'Chebet', job: 'Ward Nurse', dept: general.id, mfa: true },
-    { email: 'pharmacist@medisync.test', role: 'PHARMACIST', first: 'Kevin', last: 'Mwangi', job: 'Pharmacist', dept: pharmacyDept.id, mfa: true },
-    { email: 'lab@medisync.test', role: 'LAB_TECH', first: 'Diana', last: 'Anyango', job: 'Lab Technologist', dept: labDept.id, mfa: true },
-    { email: 'reception@medisync.test', role: 'RECEPTIONIST', first: 'Joy', last: 'Wambui', job: 'Front Desk Officer', dept: adminDept.id, mfa: true },
-    { email: 'billing@medisync.test', role: 'BILLING', first: 'Samuel', last: 'Ochieng', job: 'Billing Officer', dept: adminDept.id, mfa: true },
-    { email: 'records@medisync.test', role: 'MEDICAL_RECORDS', first: 'Naomi', last: 'Kilonzo', job: 'Records Officer', dept: adminDept.id, mfa: true },
-    { email: 'hr@medisync.test', role: 'HR_MANAGER', first: 'Charles', last: 'Barasa', job: 'HR Manager', dept: adminDept.id, mfa: true },
-    { email: 'admin.it@medisync.test', role: 'IT_ADMIN', first: 'Lydia', last: 'Njoroge', job: 'IT Administrator', dept: adminDept.id, mfa: true },
+    { email: 'doctor.amina@medisync.test', role: 'CLINICAL', clinicalRole: 'DOCTOR', first: 'Amina', last: 'Odhiambo', job: 'Consultant Physician', dept: general.id, mfa: true, license: 'KMPDC-11284' },
+    { email: 'doctor.brian@medisync.test', role: 'CLINICAL', clinicalRole: 'DOCTOR', first: 'Brian', last: 'Kiptoo', job: 'Paediatrician', dept: pediatrics.id, mfa: true, license: 'KMPDC-20411' },
+    { email: 'nurse@medisync.test', role: 'CLINICAL', clinicalRole: 'NURSE', first: 'Faith', last: 'Chebet', job: 'Ward Nurse', dept: general.id, mfa: true },
+    { email: 'pharmacist@medisync.test', role: 'DIAGNOSTICS', first: 'Kevin', last: 'Mwangi', job: 'Pharmacist', dept: pharmacyDept.id, mfa: true },
+    { email: 'lab@medisync.test', role: 'DIAGNOSTICS', first: 'Diana', last: 'Anyango', job: 'Lab Technologist', dept: labDept.id, mfa: true },
+    { email: 'radiology@medisync.test', role: 'DIAGNOSTICS', first: 'Otieno', last: 'Wafula', job: 'Radiographer', dept: labDept.id, mfa: true },
+    { email: 'reception@medisync.test', role: 'FRONT_DESK', first: 'Joy', last: 'Wambui', job: 'Front Desk Officer', dept: adminDept.id, mfa: true },
+    { email: 'records@medisync.test', role: 'FRONT_DESK', first: 'Naomi', last: 'Kilonzo', job: 'Records Officer', dept: adminDept.id, mfa: true },
+    { email: 'billing@medisync.test', role: 'FINANCE', first: 'Samuel', last: 'Ochieng', job: 'Billing Officer', dept: adminDept.id, mfa: true },
+    { email: 'hr@medisync.test', role: 'FINANCE', first: 'Charles', last: 'Barasa', job: 'HR & Rota Manager', dept: adminDept.id, mfa: true },
+    { email: 'admin.it@medisync.test', role: 'SYSTEM_ADMIN', first: 'Lydia', last: 'Njoroge', job: 'System Administrator', dept: adminDept.id, mfa: true },
   ];
 
   const staffByEmail: Record<string, { staffId: string; userId: string }> = {};
@@ -123,6 +122,7 @@ async function main() {
             firstName: spec.first,
             lastName: spec.last,
             jobTitle: spec.job,
+            clinicalRole: spec.clinicalRole ?? null,
             departmentId: spec.dept ?? null,
             licenseNo: spec.license ?? null,
             phone: '+254700000' + String(100 + index),
@@ -376,6 +376,9 @@ async function main() {
     { code: 'URA', name: 'Urinalysis', price: 700, sample: 'URINE', hours: 2 },
     { code: 'HBA1C', name: 'HbA1c', price: 2500, sample: 'BLOOD', hours: 24 },
     { code: 'LIPID', name: 'Lipid Profile', price: 3000, sample: 'BLOOD', hours: 24 },
+    // Imaging is fulfilled by the same Diagnostics role, from the same worklist.
+    { code: 'CXR', name: 'Chest X-Ray', price: 2000, sample: 'IMAGING', hours: 4 },
+    { code: 'US-ABD', name: 'Abdominal Ultrasound', price: 3500, sample: 'IMAGING', hours: 6 },
   ];
   const labTests: Record<string, { id: string; price: number; name: string }> = {};
   for (const spec of labSpecs) {

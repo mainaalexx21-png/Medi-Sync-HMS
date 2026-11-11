@@ -186,7 +186,7 @@ billingRouter.post(
     const payment = await prisma.payment.findUnique({ where: { id: req.params.id }, include: { invoice: true } });
     if (!payment) throw notFound('Payment not found');
     if (payment.status === 'REFUNDED') throw badRequest('Payment is already refunded');
-    if (!['BILLING'].includes(actor.role)) throw forbidden('Refunds must be processed by the billing desk');
+    if (actor.role !== 'FINANCE') throw forbidden('Refunds must be processed by the finance desk');
 
     const updated = await prisma.payment.update({
       where: { id: payment.id },

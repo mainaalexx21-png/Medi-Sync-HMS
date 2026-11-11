@@ -5,7 +5,7 @@ import { audit } from '../lib/audit';
 import { badRequest, notFound } from '../lib/errors';
 import { asyncHandler, paginated, parseBody, parsePagination } from '../lib/http';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { resolvePatientAccess } from '../lib/rbac';
+import { assertDepartmentType, resolvePatientAccess } from '../lib/rbac';
 import { notifyUser } from '../services/notifications';
 
 export const labRouter = Router();
@@ -28,6 +28,7 @@ labRouter.post(
   '/lab-tests',
   requirePermission('lab.result'),
   asyncHandler(async (req, res) => {
+    assertDepartmentType(req.actor!, 'LAB');
     const body = parseBody(
       z.object({
         code: z.string().trim().min(2).max(30),
@@ -103,6 +104,7 @@ labRouter.post(
   '/lab-orders/:id/collect',
   requirePermission('lab.result'),
   asyncHandler(async (req, res) => {
+    assertDepartmentType(req.actor!, 'LAB');
     const order = await prisma.labOrder.findUnique({ where: { id: req.params.id } });
     if (!order) throw notFound('Lab order not found');
     if (order.status !== 'ORDERED') throw badRequest('Sample has already been processed');
@@ -120,6 +122,7 @@ labRouter.post(
   requirePermission('lab.result'),
   asyncHandler(async (req, res) => {
     const actor = req.actor!;
+    assertDepartmentType(actor, 'LAB');
     const body = parseBody(
       z.object({
         resultValue: z.string().trim().min(1).max(500),

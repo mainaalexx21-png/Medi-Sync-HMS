@@ -5,6 +5,7 @@ import { audit } from '../lib/audit';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { asyncHandler, paginated, parseBody, parsePagination } from '../lib/http';
 import { requireAuth, requirePermission } from '../middleware/auth';
+import { assertDepartmentType } from '../lib/rbac';
 import { addInvoiceItem, ensureEncounterInvoice, recalcInvoice } from '../services/invoice';
 import { notifyUser } from '../services/notifications';
 
@@ -288,6 +289,7 @@ pharmacyRouter.post(
   requirePermission('prescription.dispense'),
   asyncHandler(async (req, res) => {
     const actor = req.actor!;
+    assertDepartmentType(actor, 'PHARMACY');
     const body = parseBody(
       z.object({
         items: z

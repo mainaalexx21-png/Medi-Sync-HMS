@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { audit } from '../lib/audit';
-import { badRequest, conflict, notFound } from '../lib/errors';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { asyncHandler, parseBody } from '../lib/http';
 import { assertPatientAccess } from '../lib/rbac';
 import { requireAuth, requirePermission } from '../middleware/auth';
@@ -114,6 +114,7 @@ wardsRouter.post(
   requirePermission('ward.write'),
   asyncHandler(async (req, res) => {
     const actor = req.actor!;
+    if (actor.clinicalRole !== 'DOCTOR') throw forbidden('Only a doctor can admit a patient');
     const body = parseBody(
       z.object({
         patientId: z.string(),
@@ -195,6 +196,7 @@ wardsRouter.post(
   requirePermission('ward.write'),
   asyncHandler(async (req, res) => {
     const actor = req.actor!;
+    if (actor.clinicalRole !== 'DOCTOR') throw forbidden('Only a doctor can discharge a patient');
     const { dischargeSummary } = parseBody(
       z.object({ dischargeSummary: z.string().trim().min(5).max(5000) }),
       req.body,

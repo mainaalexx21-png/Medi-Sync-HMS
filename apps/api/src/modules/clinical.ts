@@ -23,6 +23,7 @@ clinicalRouter.get(
   asyncHandler(async (req, res) => {
     const actor = req.actor!;
     if (!actor.staffId) throw badRequest('No staff profile linked to this account');
+    if (actor.clinicalRole !== 'DOCTOR') throw forbidden('The doctor workspace is for doctors');
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date(start.getTime() + 24 * 3600_000);
@@ -65,7 +66,7 @@ clinicalRouter.get(
     const p = parsePagination(req.query);
     const where: any = {};
     if (req.query.patientId) where.patientId = String(req.query.patientId);
-    if (actor.role === 'DOCTOR') where.doctorStaffId = actor.staffId ?? 'none';
+    if (actor.role === 'CLINICAL' && actor.clinicalRole === 'DOCTOR') where.doctorStaffId = actor.staffId ?? 'none';
     if (req.query.from || req.query.to) {
       where.startedAt = {};
       if (req.query.from) where.startedAt.gte = new Date(String(req.query.from));
@@ -197,7 +198,7 @@ clinicalRouter.patch(
     const encounter = await prisma.encounter.findUnique({ where: { id: req.params.id } });
     if (!encounter) throw notFound('Encounter not found');
     if (encounter.status === 'CLOSED') throw badRequest('Encounter is closed and cannot be edited');
-    if (actor.role === 'DOCTOR' && encounter.doctorStaffId !== actor.staffId) {
+    if (actor.clinicalRole === 'DOCTOR' && encounter.doctorStaffId !== actor.staffId) {
       throw forbidden('Only the treating doctor can edit this encounter');
     }
     await assertPatientAccess(actor, encounter.patientId, 'CLINICAL');

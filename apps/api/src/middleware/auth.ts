@@ -31,7 +31,12 @@ export async function attachActor(req: Request, _res: Response, next: NextFuncti
         user: {
           select: {
             id: true, email: true, role: true, status: true,
-            staff: { select: { id: true, departmentId: true } },
+            staff: {
+              select: {
+                id: true, departmentId: true, clinicalRole: true,
+                department: { select: { type: true } },
+              },
+            },
             patient: { select: { id: true } },
           },
         },

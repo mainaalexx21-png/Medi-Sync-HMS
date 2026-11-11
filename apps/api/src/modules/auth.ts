@@ -19,7 +19,7 @@ import {
 import { badRequest, conflict, forbidden, locked, notFound, tooMany, unauthorized } from '../lib/errors';
 import { asyncHandler, parseBody } from '../lib/http';
 import { logger } from '../lib/logger';
-import { Role, permissionsForRole } from '../lib/enums';
+import { EXTERNAL_ROLES, Role, STAFF_ROLES, permissionsForRole } from '../lib/enums';
 import { requireAuth } from '../middleware/auth';
 import { loginLimiter, mfaLimiter, resetLimiter } from '../middleware/security';
 import { nextMrn } from '../lib/ids';
@@ -53,10 +53,8 @@ const verifySchema = z.object({
   channel: z.enum(['TOTP', 'RECOVERY', 'EMAIL']).default('TOTP'),
 });
 
-const STAFF_PORTAL_ROLES: Role[] = [
-  'DOCTOR', 'NURSE', 'PHARMACIST', 'LAB_TECH', 'RECEPTIONIST', 'BILLING',
-  'HR_MANAGER', 'MEDICAL_RECORDS', 'IT_ADMIN', 'AUDITOR', 'VENDOR', 'DEVICE',
-];
+// Every staff and external account must enrol MFA; portal users may do so later.
+const STAFF_PORTAL_ROLES: Role[] = [...STAFF_ROLES, ...EXTERNAL_ROLES];
 
 function portalOf(role: string): 'staff' | 'patient' {
   return ['PATIENT', 'GUARDIAN'].includes(role) ? 'patient' : 'staff';
@@ -82,7 +80,7 @@ async function finishLogin(userId: string, req: any, res: any) {
     mfaRequired: false,
     accessToken,
     user: publicUser(user),
-    permissions: permissionsForRole(user.role as Role),
+    permissions: permissionsForRole(user.role as Role, user.staff?.clinicalRole),
     portal: portalOf(user.role),
     profile: user.staff
       ? { id: user.staff.id, name: `${user.staff.firstName} ${user.staff.lastName}`, jobTitle: user.staff.jobTitle, departmentId: user.staff.departmentId }
@@ -280,7 +278,7 @@ authRouter.post(
     if (!user) throw unauthorized('Account unavailable');
     return res.json({
       user: publicUser(user),
-      permissions: permissionsForRole(user.role as Role),
+      permissions: permissionsForRole(user.role as Role, user.staff?.clinicalRole),
       portal: portalOf(user.role),
       mfaSetupRequired: STAFF_PORTAL_ROLES.includes(user.role as Role) && !user.mfaEnabled,
     });
@@ -320,7 +318,7 @@ authRouter.get(
     const actor = req.actor!;
     const user = await prisma.user.findUnique({
       where: { id: actor.id },
-      include: { staff: true, patient: true },
+      include: { staff: { include: { department: true } }, patient: true },
     });
     if (!user) throw unauthorized();
     let guardianLinks: unknown[] = [];
@@ -337,8 +335,16 @@ authRouter.get(
       user: publicUser(user),
       permissions: actor.permissions,
       portal: portalOf(user.role),
+      clinicalRole: user.staff?.clinicalRole ?? null,
       profile: user.staff
-        ? { id: user.staff.id, name: `${user.staff.firstName} ${user.staff.lastName}`, jobTitle: user.staff.jobTitle, departmentId: user.staff.departmentId, employeeNo: user.staff.employeeNo }
+        ? {
+            id: user.staff.id,
+            name: `${user.staff.firstName} ${user.staff.lastName}`,
+            jobTitle: user.staff.jobTitle,
+            departmentId: user.staff.departmentId,
+            departmentType: user.staff.department?.type ?? null,
+            employeeNo: user.staff.employeeNo,
+          }
         : user.patient
           ? { id: user.patient.id, name: `${user.patient.firstName} ${user.patient.lastName}`, mrn: user.patient.mrn }
           : null,

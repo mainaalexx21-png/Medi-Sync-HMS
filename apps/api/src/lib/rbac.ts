@@ -11,6 +11,10 @@ export interface Actor {
   sessionId: string;
   staffId?: string | null;
   staffDepartmentId?: string | null;
+  /** Department type (CLINICAL | LAB | PHARMACY | ADMIN) used for in-role scoping. */
+  staffDepartmentType?: string | null;
+  /** Job function inside the CLINICAL role: DOCTOR or NURSE. */
+  clinicalRole?: string | null;
   patientId?: string | null;
   /** Scopes granted through an ExternalAccessGrant (vendors / auditors). */
   grantScope?: string[];
@@ -31,11 +35,17 @@ export function actorFromUser(user: {
   id: string;
   email: string;
   role: string;
-  staff?: { id: string; departmentId: string | null } | null;
+  staff?: {
+    id: string;
+    departmentId: string | null;
+    clinicalRole?: string | null;
+    department?: { type: string } | null;
+  } | null;
   patient?: { id: string } | null;
 }, sessionId: string, grantScope?: string[]): Actor {
   const role = user.role as Role;
-  const permissions = permissionsForRole(role);
+  const clinicalRole = user.staff?.clinicalRole ?? null;
+  const permissions = permissionsForRole(role, clinicalRole);
   if (grantScope?.length) {
     for (const raw of grantScope) {
       if ((permissions as string[]).includes(raw)) continue;
@@ -50,6 +60,8 @@ export function actorFromUser(user: {
     sessionId,
     staffId: user.staff?.id ?? null,
     staffDepartmentId: user.staff?.departmentId ?? null,
+    staffDepartmentType: user.staff?.department?.type ?? null,
+    clinicalRole,
     patientId: user.patient?.id ?? null,
     grantScope,
   };
@@ -60,10 +72,22 @@ export function hasPermission(actor: Actor, permission: Permission): boolean {
 }
 
 /**
- * Per-record authorization. Holding `patient.read` is not enough for a doctor:
- * they must have a care relationship (appointment or encounter) with the
- * patient, or an unexpired break-glass event. This is the core of "deny by
- * default" and is exercised by the automated RBAC tests.
+ * Diagnostics & Pharmacy is a single role covering laboratory, imaging and
+ * pharmacy staff. Which half a user works in is decided by their department, so
+ * a pharmacist cannot verify a lab result and a lab technologist cannot dispense.
+ */
+export function assertDepartmentType(actor: Actor, ...types: string[]) {
+  if (!types.includes(actor.staffDepartmentType ?? '')) {
+    throw forbidden(`This action is limited to the ${types.join(' / ')} department`);
+  }
+}
+
+/**
+ * Per-record authorization. Holding `patient.read` is not enough for a
+ * clinician: they must have a care relationship (appointment, encounter, ward
+ * or queue in their department) with the patient, or an unexpired break-glass
+ * event. This is the core of "deny by default" and is exercised by the
+ * automated RBAC tests.
  */
 export async function resolvePatientAccess(
   actor: Actor,
@@ -112,87 +136,102 @@ export async function resolvePatientAccess(
     return { allowed: true, scope: 'LIMITED', guardianScopes: [], viaBreakGlass: false };
   }
 
-  // IT administrators deliberately have no clinical access by default.
-  if (actor.role === 'IT_ADMIN' || !hasPermission(actor, 'patient.read')) {
+  // System administrators deliberately have no clinical access at all.
+  if (actor.role === 'SYSTEM_ADMIN' || !hasPermission(actor, 'patient.read')) {
     return deny('Role has no patient data permission');
   }
 
   const clinicalNeed = need === 'CLINICAL';
 
-  if (actor.role === 'DOCTOR') {
+  /**
+   * Clinical staff see only patients in their care or department. The job
+   * function decides how that relationship is proven - doctors by their own
+   * appointments, encounters and queue; nurses by the ward and the shared
+   * department queue.
+   */
+  if (actor.role === 'CLINICAL') {
     if (!actor.staffId) return deny('No staff profile linked to this account');
-    const [appointment, encounter, inMyQueue] = await Promise.all([
-      prisma.appointment.findFirst({
-        where: { patientId, doctorStaffId: actor.staffId },
-        select: { id: true },
-      }),
-      prisma.encounter.findFirst({
-        where: { patientId, doctorStaffId: actor.staffId },
-        select: { id: true },
-      }),
-      prisma.queueEntry.findFirst({
-        where: {
-          patientId,
-          doctorStaffId: actor.staffId,
-          status: { in: ['WAITING', 'CALLED', 'IN_CONSULTATION'] },
-        },
-        select: { id: true },
-      }),
-    ]);
-    if (appointment || encounter || inMyQueue) {
-      return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: false };
+    if (actor.clinicalRole === 'DOCTOR') {
+      const [appointment, encounter, inMyQueue] = await Promise.all([
+        prisma.appointment.findFirst({
+          where: { patientId, doctorStaffId: actor.staffId },
+          select: { id: true },
+        }),
+        prisma.encounter.findFirst({
+          where: { patientId, doctorStaffId: actor.staffId },
+          select: { id: true },
+        }),
+        prisma.queueEntry.findFirst({
+          where: {
+            patientId,
+            doctorStaffId: actor.staffId,
+            status: { in: ['WAITING', 'CALLED', 'IN_CONSULTATION'] },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (appointment || encounter || inMyQueue) {
+        return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: false };
+      }
+      if (hasPermission(actor, 'breakglass.use')) {
+        const bg = await prisma.breakGlassEvent.findFirst({
+          where: {
+            userId: actor.id,
+            patientId,
+            createdAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+          },
+          select: { id: true },
+        });
+        if (bg) {
+          return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: true };
+        }
+      }
+      return deny('No care relationship with this patient');
     }
-    if (hasPermission(actor, 'breakglass.use')) {
-      const bg = await prisma.breakGlassEvent.findFirst({
+
+    if (actor.clinicalRole === 'NURSE') {
+      const admitted = await prisma.admission.findFirst({
+        where: { patientId, status: 'ADMITTED' },
+        select: { id: true },
+      });
+      if (admitted) return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: false };
+
+      const recentInDepartment = await prisma.queueEntry.findFirst({
         where: {
-          userId: actor.id,
           patientId,
-          createdAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+          createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          ...(actor.staffDepartmentId ? { departmentId: actor.staffDepartmentId } : {}),
         },
         select: { id: true },
       });
-      if (bg) {
-        return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: true };
+      if (recentInDepartment) {
+        return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: false };
       }
+      return deny('Patient is not in your ward or department queue');
     }
-    return deny('No care relationship with this patient');
+
+    return deny('Clinical job function is not configured for this account');
   }
 
-  if (actor.role === 'NURSE') {
-    if (!actor.staffId) return deny('No staff profile linked to this account');
-    const table = await prisma.admission.findFirst({
-      where: { patientId, status: 'ADMITTED' },
-      select: { id: true },
-    });
-    if (table) return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: false };
-    const inQueue = await prisma.queueEntry.findFirst({
-      where: {
-        patientId,
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      },
-      select: { id: true },
-    });
-    if (inQueue) return { allowed: true, scope: 'CLINICAL', guardianScopes: [], viaBreakGlass: false };
-    return deny('Patient is not in your ward or queue');
+  if (actor.role === 'DIAGNOSTICS') {
+    // Minimal demographics plus allergies so orders can be fulfilled safely;
+    // clinical notes stay closed.
+    return { allowed: true, scope: 'LIMITED', guardianScopes: [], viaBreakGlass: false };
   }
 
-  if (actor.role === 'BILLING') {
-    return need === 'CLINICAL'
-      ? deny('Billing staff cannot open clinical notes')
+  if (actor.role === 'FINANCE') {
+    return clinicalNeed
+      ? deny('Finance staff cannot open clinical notes')
       : { allowed: true, scope: 'BILLING', guardianScopes: [], viaBreakGlass: false };
   }
 
-  // Reception, medical records, pharmacy, lab: demographic/administrative view.
-  return {
-    allowed: true,
-    scope: clinicalNeed && ['MEDICAL_RECORDS', 'PHARMACIST', 'LAB_TECH'].includes(actor.role)
-      ? 'LIMITED'
-      : clinicalNeed
-        ? 'CLINICAL'
-        : 'LIMITED',
-    guardianScopes: [],
-    viaBreakGlass: false,
-  };
+  if (actor.role === 'FRONT_DESK') {
+    return clinicalNeed
+      ? deny('Front desk staff cannot open clinical notes')
+      : { allowed: true, scope: 'LIMITED', guardianScopes: [], viaBreakGlass: false };
+  }
+
+  return deny('Role has no patient data permission');
 }
 
 export async function assertPatientAccess(

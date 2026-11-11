@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { signIn } from './helpers';
 
 describe('dashboards and reports', () => {
-  it('returns real management metrics for HR', async () => {
+  it('returns real management metrics for finance & administration', async () => {
     const hr = await signIn('hr@medisync.test');
     const res = await hr.get('/api/v1/reports/overview').expect(200);
     expect(res.body.patients.new).toBeGreaterThan(0);
@@ -23,9 +23,9 @@ describe('dashboards and reports', () => {
     expect(general.avgWaitMinutes).toBeGreaterThan(0);
   });
 
-  it('restricts financial reports to finance roles', async () => {
-    const hr = await signIn('hr@medisync.test');
-    expect((await hr.get('/api/v1/reports/revenue')).status).toBe(403);
+  it('restricts financial reports to the finance role', async () => {
+    const reception = await signIn('reception@medisync.test');
+    expect((await reception.get('/api/v1/reports/revenue')).status).toBe(403);
 
     const billing = await signIn('billing@medisync.test');
     const revenue = await billing.get('/api/v1/reports/revenue').expect(200);

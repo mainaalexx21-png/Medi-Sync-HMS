@@ -22,7 +22,9 @@ describe('authentication & MFA', () => {
   it('completes login with a valid TOTP and exposes the permission set', async () => {
     const api = await signIn('doctor.amina@medisync.test');
     const me = await api.get('/api/v1/auth/me').expect(200);
-    expect(me.body.user.role).toBe('DOCTOR');
+    // Five staff roles: a doctor is CLINICAL with the DOCTOR job function.
+    expect(me.body.user.role).toBe('CLINICAL');
+    expect(me.body.clinicalRole).toBe('DOCTOR');
     expect(me.body.permissions).toContain('encounter.write');
     expect(me.body.permissions).not.toContain('settings.write');
   });

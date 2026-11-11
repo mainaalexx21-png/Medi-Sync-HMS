@@ -44,7 +44,9 @@ function Users() {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ email: '', role: 'DOCTOR', firstName: '', lastName: '', jobTitle: '' });
+  const [form, setForm] = useState({
+    email: '', role: 'FRONT_DESK', clinicalRole: 'DOCTOR', firstName: '', lastName: '', jobTitle: '',
+  });
   const [tempPassword, setTempPassword] = useState<string | null>(null);
 
   const users = useQuery({
@@ -96,16 +98,19 @@ function Users() {
     <Card>
       <CardHeader
         title="Staff & external accounts"
-        subtitle="Roles are enforced server-side. IT administrators cannot create clinical accounts."
+        subtitle="Five staff roles, enforced server-side. System administrators cannot read clinical data."
         actions={<Button size="sm" onClick={() => setCreating(true)}>New account</Button>}
       />
       <div className="grid gap-2 border-b border-slate-100 p-3 sm:grid-cols-3">
         <Input placeholder="Search email" value={search} onChange={(event) => setSearch(event.target.value)} />
         <Select value={role} onChange={(event) => setRole(event.target.value)} aria-label="Filter by role">
           <option value="">All roles</option>
-          {['DOCTOR', 'NURSE', 'PHARMACIST', 'LAB_TECH', 'RECEPTIONIST', 'BILLING', 'HR_MANAGER', 'MEDICAL_RECORDS', 'IT_ADMIN', 'AUDITOR', 'VENDOR'].map((option) => (
+          {[
+            'FRONT_DESK', 'CLINICAL', 'DIAGNOSTICS', 'FINANCE', 'SYSTEM_ADMIN',
+            'AUDITOR', 'VENDOR', 'PATIENT', 'GUARDIAN',
+          ].map((option) => (
             <option key={option} value={option}>
-              {option.replace('_', ' ')}
+              {option.replace(/_/g, ' ')}
             </option>
           ))}
         </Select>
@@ -124,7 +129,10 @@ function Users() {
                 <p className="font-medium">{user.staff ? `${user.staff.firstName} ${user.staff.lastName}` : user.email}</p>
                 <p className="text-xs text-slate-500">{user.email}</p>
               </td>
-              <td className="table-cell text-xs">{user.role.replace('_', ' ')}</td>
+              <td className="table-cell text-xs">
+                {user.role.replace(/_/g, ' ')}
+                {user.staff?.clinicalRole ? ` · ${user.staff.clinicalRole.toLowerCase()}` : ''}
+              </td>
               <td className="table-cell">
                 <Badge tone={user.mfaEnabled ? 'success' : 'warning'}>{user.mfaEnabled ? 'On' : 'Off'}</Badge>
               </td>
@@ -187,9 +195,9 @@ function Users() {
             <div className="grid grid-cols-2 gap-2">
               <Field label="Role" htmlFor="u-role" required>
                 <Select id="u-role" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>
-                  {['DOCTOR', 'NURSE', 'PHARMACIST', 'LAB_TECH', 'RECEPTIONIST', 'BILLING', 'HR_MANAGER', 'MEDICAL_RECORDS', 'IT_ADMIN'].map((option) => (
+                  {['FRONT_DESK', 'CLINICAL', 'DIAGNOSTICS', 'FINANCE', 'SYSTEM_ADMIN'].map((option) => (
                     <option key={option} value={option}>
-                      {option.replace('_', ' ')}
+                      {option.replace(/_/g, ' ')}
                     </option>
                   ))}
                 </Select>
@@ -198,6 +206,18 @@ function Users() {
                 <Input id="u-job" value={form.jobTitle} onChange={(event) => setForm({ ...form, jobTitle: event.target.value })} />
               </Field>
             </div>
+            {form.role === 'CLINICAL' && (
+              <Field label="Clinical job function" htmlFor="u-clinical-role" required>
+                <Select
+                  id="u-clinical-role"
+                  value={form.clinicalRole}
+                  onChange={(event) => setForm({ ...form, clinicalRole: event.target.value })}
+                >
+                  <option value="DOCTOR">Doctor - diagnose, prescribe, order, admit</option>
+                  <option value="NURSE">Nurse - triage, vitals, ward care</option>
+                </Select>
+              </Field>
+            )}
             <Button type="submit">Create account</Button>
           </form>
         )}

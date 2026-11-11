@@ -16,10 +16,14 @@ export interface Profile {
   employeeNo?: string;
   mrn?: string;
   departmentId?: string | null;
+  /** CLINICAL | LAB | PHARMACY | ADMIN - scopes the diagnostics role in the UI. */
+  departmentType?: string | null;
 }
 
 export interface Me {
   user: SessionUser;
+  /** Job function inside the CLINICAL role: DOCTOR or NURSE. */
+  clinicalRole?: string | null;
   permissions: string[];
   portal: 'staff' | 'patient';
   profile: Profile | null;
@@ -48,21 +52,20 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STAFF_LANDING: Record<string, string> = {
-  DOCTOR: '/doctor',
-  NURSE: '/queue',
-  PHARMACIST: '/pharmacy',
-  LAB_TECH: '/lab',
-  RECEPTIONIST: '/reception',
-  BILLING: '/billing',
-  HR_MANAGER: '/reports',
-  MEDICAL_RECORDS: '/patients',
-  IT_ADMIN: '/admin',
+  FRONT_DESK: '/reception',
+  CLINICAL: '/dashboard',
+  FINANCE: '/billing',
+  SYSTEM_ADMIN: '/admin',
   AUDITOR: '/reports',
   VENDOR: '/patients',
 };
 
 export function landingFor(me: Me) {
   if (me.portal === 'patient') return '/portal';
+  // Diagnostics & Pharmacy work in one role but two different queues.
+  if (me.user.role === 'DIAGNOSTICS') {
+    return me.profile?.departmentType === 'PHARMACY' ? '/pharmacy' : '/lab';
+  }
   return STAFF_LANDING[me.user.role] ?? '/dashboard';
 }
 
@@ -138,17 +141,21 @@ export function useAuth() {
 }
 
 export const ROLE_LABELS: Record<string, string> = {
-  DOCTOR: 'Doctor',
-  NURSE: 'Nurse',
-  PHARMACIST: 'Pharmacist',
-  LAB_TECH: 'Lab technologist',
-  RECEPTIONIST: 'Reception',
-  BILLING: 'Billing',
-  HR_MANAGER: 'HR & management',
-  MEDICAL_RECORDS: 'Medical records',
-  IT_ADMIN: 'IT administrator',
+  FRONT_DESK: 'Front desk & patient services',
+  CLINICAL: 'Clinical staff',
+  DIAGNOSTICS: 'Diagnostics & pharmacy',
+  FINANCE: 'Finance & administration',
+  SYSTEM_ADMIN: 'System administration',
   AUDITOR: 'External auditor',
   VENDOR: 'Vendor',
   PATIENT: 'Patient',
   GUARDIAN: 'Guardian',
 };
+
+/** Sub-label for the CLINICAL role, e.g. "Clinical staff · Doctor". */
+export function jobFunctionLabel(me: Me) {
+  if (me.user.role === 'CLINICAL' && me.clinicalRole) {
+    return me.clinicalRole === 'DOCTOR' ? 'Doctor' : 'Nurse';
+  }
+  return null;
+}

@@ -88,20 +88,34 @@ async function listScope(actor: Actor) {
       return { userId: actor.id };
     case 'GUARDIAN':
       return { guardianLinks: { some: { guardianUserId: actor.id, status: 'ACTIVE', revokedAt: null } } };
-    case 'DOCTOR':
-      return {
-        OR: [
-          { appointments: { some: { doctorStaffId: actor.staffId ?? '' } } },
-          { encounters: { some: { doctorStaffId: actor.staffId ?? '' } } },
-        ],
-      };
-    case 'NURSE':
-      return {
-        OR: [
-          { admissions: { some: { status: 'ADMITTED' } } },
-          { queueEntries: { some: { createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } } },
-        ],
-      };
+    case 'CLINICAL':
+      // Doctors: patients they are treating. Nurses: their ward and the shared
+      // department queue. One role, two care relationships.
+      if (actor.clinicalRole === 'DOCTOR') {
+        return {
+          OR: [
+            { appointments: { some: { doctorStaffId: actor.staffId ?? '' } } },
+            { encounters: { some: { doctorStaffId: actor.staffId ?? '' } } },
+            { queueEntries: { some: { doctorStaffId: actor.staffId ?? '', status: { in: ['WAITING', 'CALLED', 'IN_CONSULTATION'] } } } },
+          ],
+        };
+      }
+      if (actor.clinicalRole === 'NURSE') {
+        return {
+          OR: [
+            { admissions: { some: { status: 'ADMITTED' } } },
+            {
+              queueEntries: {
+                some: {
+                  createdAt: { gte: new Date(Date.now() - 24 * 3600_000) },
+                  ...(actor.staffDepartmentId ? { departmentId: actor.staffDepartmentId } : {}),
+                },
+              },
+            },
+          ],
+        };
+      }
+      return { id: 'none' };
     default:
       return {};
   }
@@ -375,7 +389,7 @@ patientsRouter.post(
     });
     // Flag for review: everyone with audit access sees it in the review queue.
     const reviewers = await prisma.user.findMany({
-      where: { role: { in: ['MEDICAL_RECORDS', 'IT_ADMIN', 'HR_MANAGER'] }, status: 'ACTIVE' },
+      where: { role: { in: ['SYSTEM_ADMIN'] }, status: 'ACTIVE' },
       select: { id: true },
     });
     await Promise.all(

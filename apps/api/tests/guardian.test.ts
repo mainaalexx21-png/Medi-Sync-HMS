@@ -81,7 +81,8 @@ describe('guardian consent scoping', () => {
     expect(record.status).toBe(200);
     expect(record.body.access.viaBreakGlass).toBe(true);
 
-    const admin = await signIn('records@medisync.test');
+    // Break-glass review belongs to system administration & audit.
+    const admin = await signIn('admin.it@medisync.test');
     const queue = await admin.get('/api/v1/break-glass').expect(200);
     expect(queue.body.pending).toBeGreaterThan(0);
     expect(grace?.mrn).toBeTruthy();

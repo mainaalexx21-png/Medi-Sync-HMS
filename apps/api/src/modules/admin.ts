@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { audit, verifyAuditChain } from '../lib/audit';
 import { assertPasswordPolicy, hashPassword, randomToken, sha256, timingSafeEqualStr } from '../lib/crypto';
-import { ROLES, Role, permissionsForRole } from '../lib/enums';
+import { CLINICAL_FUNCTIONS, Role, permissionsForRole } from '../lib/enums';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { asyncHandler, paginated, parseBody, parsePagination } from '../lib/http';
 import { requireAuth, requirePermission } from '../middleware/auth';
@@ -12,7 +12,10 @@ import { notifyUser } from '../services/notifications';
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
 
-const roleEnum = z.enum(ROLES);
+/** Roles an administrator can assign. External access is grant-only. */
+const roleEnum = z.enum([
+  'FRONT_DESK', 'CLINICAL', 'DIAGNOSTICS', 'FINANCE', 'SYSTEM_ADMIN', 'PATIENT', 'GUARDIAN',
+]);
 
 // ---------------------------------------------------------------------------
 // User & role administration
@@ -55,6 +58,7 @@ adminRouter.post(
       z.object({
         email: z.string().email().max(200),
         role: roleEnum,
+        clinicalRole: z.enum(CLINICAL_FUNCTIONS).optional(),
         firstName: z.string().trim().min(1).max(80).optional(),
         lastName: z.string().trim().min(1).max(80).optional(),
         jobTitle: z.string().max(120).optional(),
@@ -68,12 +72,12 @@ adminRouter.post(
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) throw conflict('An account with this email already exists');
 
-    // IT admins may only create non-clinical accounts; HR can create staff.
-    if (actor.role === 'IT_ADMIN' && ['DOCTOR', 'NURSE', 'PHARMACIST', 'LAB_TECH'].includes(body.role)) {
-      throw forbidden('IT administrators cannot create clinical accounts');
+    // Separation of duties: only a system administrator can mint another one.
+    if (body.role === 'SYSTEM_ADMIN' && actor.role !== 'SYSTEM_ADMIN') {
+      throw forbidden('Only a system administrator can create system administrator accounts');
     }
-    if (body.role === 'IT_ADMIN' && actor.role !== 'IT_ADMIN') {
-      throw forbidden('Only IT administrators can create IT administrator accounts');
+    if (body.role === 'CLINICAL' && !body.clinicalRole) {
+      throw badRequest('Choose whether the clinical account is a doctor or a nurse');
     }
 
     const tempPassword = `Ms-${randomToken(9)}!4`;
@@ -98,6 +102,7 @@ adminRouter.post(
                   firstName: body.firstName!,
                   lastName: body.lastName!,
                   jobTitle: body.jobTitle ?? body.role.replace('_', ' ').toLowerCase(),
+                  clinicalRole: body.role === 'CLINICAL' ? body.clinicalRole ?? null : null,
                   licenseNo: body.licenseNo ?? null,
                   phone: body.phone ?? null,
                   departmentId: body.departmentId ?? null,
@@ -125,18 +130,30 @@ adminRouter.patch(
       z.object({
         status: z.enum(['ACTIVE', 'LOCKED', 'DISABLED']).optional(),
         role: roleEnum.optional(),
+        clinicalRole: z.enum(CLINICAL_FUNCTIONS).nullable().optional(),
       }),
       req.body,
     );
-    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: { staff: true } });
     if (!user) throw notFound('User not found');
     if (user.id === actor.id && body.role && body.role !== user.role) {
       throw forbidden('You cannot change your own role');
     }
-    if (user.role === 'IT_ADMIN' && actor.role !== 'IT_ADMIN') throw forbidden('Only IT can modify IT administrators');
-    if (body.role === 'IT_ADMIN' && actor.role !== 'IT_ADMIN') throw forbidden('Only IT can grant IT administrator');
+    if (user.role === 'SYSTEM_ADMIN' && actor.role !== 'SYSTEM_ADMIN') {
+      throw forbidden('Only a system administrator can modify system administrator accounts');
+    }
+    if (body.role === 'SYSTEM_ADMIN' && actor.role !== 'SYSTEM_ADMIN') {
+      throw forbidden('Only a system administrator can grant that role');
+    }
 
-    const updated = await prisma.user.update({ where: { id: user.id }, data: body });
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        ...body,
+        // Keep the job function in step with a role change.
+        ...(body.role && body.role !== 'CLINICAL' && user.staff ? { staff: { update: { clinicalRole: null } } } : {}),
+      },
+    });
     if (body.status && body.status !== 'ACTIVE') {
       await prisma.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
     }
@@ -176,7 +193,9 @@ adminRouter.post(
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!user) throw notFound('User not found');
     if (user.id === actor.id) throw badRequest('Use your own security settings to re-enrol MFA');
-    if (user.role === 'IT_ADMIN' && actor.role !== 'IT_ADMIN') throw forbidden('Only IT can reset IT administrator MFA');
+    if (user.role === 'SYSTEM_ADMIN' && actor.role !== 'SYSTEM_ADMIN') {
+      throw forbidden('Only a system administrator can reset system administrator MFA');
+    }
 
     await prisma.$transaction([
       prisma.user.update({

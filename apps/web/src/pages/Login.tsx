@@ -6,15 +6,16 @@ import { landingFor, useAuth } from '../lib/auth';
 import { Alert, Button, Card, Field, Input } from '../components/ui';
 
 const DEMO_ACCOUNTS = [
-  { role: 'Doctor', email: 'doctor.amina@medisync.test' },
-  { role: 'Reception', email: 'reception@medisync.test' },
-  { role: 'Pharmacist', email: 'pharmacist@medisync.test' },
-  { role: 'Lab', email: 'lab@medisync.test' },
-  { role: 'Billing', email: 'billing@medisync.test' },
-  { role: 'Nurse', email: 'nurse@medisync.test' },
-  { role: 'HR', email: 'hr@medisync.test' },
-  { role: 'Records', email: 'records@medisync.test' },
-  { role: 'IT', email: 'admin.it@medisync.test' },
+  { role: 'Front desk · receptionist', email: 'reception@medisync.test' },
+  { role: 'Front desk · records', email: 'records@medisync.test' },
+  { role: 'Clinical · doctor', email: 'doctor.amina@medisync.test' },
+  { role: 'Clinical · nurse', email: 'nurse@medisync.test' },
+  { role: 'Diagnostics · lab', email: 'lab@medisync.test' },
+  { role: 'Diagnostics · imaging', email: 'radiology@medisync.test' },
+  { role: 'Diagnostics · pharmacy', email: 'pharmacist@medisync.test' },
+  { role: 'Finance · billing', email: 'billing@medisync.test' },
+  { role: 'Finance · HR & rota', email: 'hr@medisync.test' },
+  { role: 'System admin', email: 'admin.it@medisync.test' },
   { role: 'Patient', email: 'grace@example.test' },
   { role: 'Guardian', email: 'guardian@example.test' },
 ];

@@ -33,7 +33,8 @@ schedulingRouter.get(
     const staff = await prisma.staff.findMany({
       where: {
         ...(departmentId ? { departmentId } : {}),
-        user: { role: 'DOCTOR', status: 'ACTIVE' },
+        clinicalRole: 'DOCTOR',
+        user: { role: 'CLINICAL', status: 'ACTIVE' },
       },
       select: {
         id: true, firstName: true, lastName: true, jobTitle: true, departmentId: true,
@@ -56,11 +57,12 @@ schedulingRouter.get(
     const actor = req.actor!;
     const doctorStaffId = req.query.doctorStaffId
       ? String(req.query.doctorStaffId)
-      : actor.role === 'DOCTOR'
+      : actor.clinicalRole === 'DOCTOR'
         ? actor.staffId
         : undefined;
     const rows = await prisma.doctorSchedule.findMany({
-      where: doctorStaffId && actor.role !== 'HR_MANAGER' ? { staffId: doctorStaffId } : {},
+      // Finance keeps the rota, so they can see every doctor's blocks.
+      where: doctorStaffId && actor.role !== 'FINANCE' ? { staffId: doctorStaffId } : {},
       include: { staff: { select: { firstName: true, lastName: true } }, department: { select: { name: true } } },
       orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
     });
@@ -88,11 +90,13 @@ schedulingRouter.post(
     if (body.endTime <= body.startTime) throw badRequest('End time must be after the start time');
     const staffId = body.staffId ?? actor.staffId;
     if (!staffId) throw badRequest('A doctor is required');
-    if (actor.role === 'DOCTOR' && staffId !== actor.staffId) {
+    if (actor.clinicalRole === 'DOCTOR' && staffId !== actor.staffId) {
       throw forbidden('Doctors can only manage their own rota');
     }
     const staff = await prisma.staff.findUnique({ where: { id: staffId }, include: { user: true } });
-    if (!staff || staff.user.role !== 'DOCTOR') throw badRequest('Selected staff member is not a doctor');
+    if (!staff || staff.user.role !== 'CLINICAL' || staff.clinicalRole !== 'DOCTOR') {
+      throw badRequest('Selected staff member is not a doctor');
+    }
 
     const clash = await prisma.doctorSchedule.findFirst({
       where: { staffId, weekday: body.weekday, startTime: { lt: body.endTime }, endTime: { gt: body.startTime } },
@@ -114,7 +118,7 @@ schedulingRouter.delete(
     const actor = req.actor!;
     const template = await prisma.doctorSchedule.findUnique({ where: { id: req.params.id } });
     if (!template) throw notFound('Availability block not found');
-    if (actor.role === 'DOCTOR' && template.staffId !== actor.staffId) throw forbidden('Not your rota');
+    if (actor.clinicalRole === 'DOCTOR' && template.staffId !== actor.staffId) throw forbidden('Not your rota');
     const upcoming = await prisma.appointment.count({
       where: { doctorStaffId: template.staffId, status: { in: ACTIVE_STATUSES }, startAt: { gt: new Date() } },
     });
@@ -216,7 +220,7 @@ schedulingRouter.get(
     if (req.query.departmentId) where.departmentId = String(req.query.departmentId);
     if (req.query.patientId) where.patientId = String(req.query.patientId);
     if (req.query.doctorStaffId) where.doctorStaffId = String(req.query.doctorStaffId);
-    if (actor.role === 'DOCTOR') where.doctorStaffId = actor.staffId ?? 'none';
+    if (actor.clinicalRole === 'DOCTOR') where.doctorStaffId = actor.staffId ?? 'none';
 
     const [rows, total] = await Promise.all([
       prisma.appointment.findMany({
@@ -275,7 +279,7 @@ schedulingRouter.post(
       where: { id: body.doctorStaffId },
       include: { user: { select: { role: true, status: true } } },
     });
-    if (!doctor || doctor.user.role !== 'DOCTOR' || doctor.user.status !== 'ACTIVE') {
+    if (!doctor || doctor.user.role !== 'CLINICAL' || doctor.clinicalRole !== 'DOCTOR' || doctor.user.status !== 'ACTIVE') {
       throw badRequest('Selected doctor is not available');
     }
     if (body.startAt.getTime() < Date.now() - 60_000) throw badRequest('Appointment time must be in the future');
@@ -373,7 +377,7 @@ schedulingRouter.get(
       },
     });
     if (!appointment) throw notFound('Appointment not found');
-    if (actor.role === 'DOCTOR' && appointment.doctorStaffId !== actor.staffId) throw forbidden('Not your appointment');
+    if (actor.clinicalRole === 'DOCTOR' && appointment.doctorStaffId !== actor.staffId) throw forbidden('Not your appointment');
     res.json({ appointment });
   }),
 );
@@ -387,7 +391,7 @@ schedulingRouter.post(
     if (!appointment) throw notFound('Appointment not found');
     const canCancel =
       actor.permissions.includes('appointment.write') ||
-      (actor.role === 'DOCTOR' && appointment.doctorStaffId === actor.staffId) ||
+      (actor.clinicalRole === 'DOCTOR' && appointment.doctorStaffId === actor.staffId) ||
       (actor.role === 'PATIENT' && appointment.patientId === actor.patientId);
     if (!canCancel) {
       if (actor.role === 'GUARDIAN') {
@@ -422,7 +426,7 @@ schedulingRouter.post(
     if (!original) throw notFound('Appointment not found');
     const allowed =
       actor.permissions.includes('appointment.write') ||
-      (actor.role === 'DOCTOR' && original.doctorStaffId === actor.staffId) ||
+      (actor.clinicalRole === 'DOCTOR' && original.doctorStaffId === actor.staffId) ||
       (actor.role === 'PATIENT' && original.patientId === actor.patientId);
     if (!allowed) throw forbidden('Not allowed');
     if (['COMPLETED', 'CANCELLED'].includes(original.status)) throw badRequest('This appointment can no longer be moved');

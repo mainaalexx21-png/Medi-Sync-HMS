@@ -16,7 +16,16 @@ beforeAll(async () => {
 });
 
 describe('role-based access control (server side)', () => {
-  it('denies a pharmacist access to the audit trail', async () => {
+  it('exposes exactly five staff roles to the client', async () => {
+    const me = await (await signIn('doctor.amina@medisync.test')).get('/api/v1/auth/me').expect(200);
+    expect(me.body.user.role).toBe('CLINICAL');
+    expect(me.body.clinicalRole).toBe('DOCTOR');
+    // The clinical job function adds capabilities on top of the CLINICAL role.
+    expect(me.body.permissions).toContain('encounter.write');
+    expect(me.body.permissions).toContain('prescription.write');
+  });
+
+  it('denies a diagnostics user access to the audit trail', async () => {
     const pharmacist = await signIn('pharmacist@medisync.test');
     const res = await pharmacist.get('/api/v1/audit');
     expect(res.status).toBe(403);
@@ -26,10 +35,27 @@ describe('role-based access control (server side)', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(denied).toBeTruthy();
-    expect(denied?.actorRole).toBe('PHARMACIST');
+    expect(denied?.actorRole).toBe('DIAGNOSTICS');
   });
 
-  it('gives IT administrators no clinical data access', async () => {
+  it('keeps the two halves of Diagnostics & Pharmacy apart by department', async () => {
+    // A pharmacist may dispense, but cannot enter a laboratory result...
+    const pharmacist = await signIn('pharmacist@medisync.test');
+    const order = await prisma.labOrder.findFirst({ where: { status: 'ORDERED' } });
+    const deniedResult = await pharmacist.post(`/api/v1/lab-orders/${order!.id}/result`).send({
+      resultValue: '4.0',
+    });
+    expect(deniedResult.status).toBe(403);
+    expect(deniedResult.body.error.message).toMatch(/department/i);
+
+    // ...and a lab technologist cannot dispense.
+    const pending = await prisma.prescription.findFirst({ where: { status: 'PENDING' } });
+    const lab = await signIn('lab@medisync.test');
+    const deniedDispense = await lab.post(`/api/v1/prescriptions/${pending!.id}/dispense`).send({});
+    expect(deniedDispense.status).toBe(403);
+  });
+
+  it('gives system administrators no clinical data access', async () => {
     const it = await signIn('admin.it@medisync.test');
     expect((await it.get('/api/v1/patients')).status).toBe(403);
     expect((await it.get(`/api/v1/patients/${graceId}`)).status).toBe(403);
@@ -48,11 +74,24 @@ describe('role-based access control (server side)', () => {
     expect(denied.body.error.message).toMatch(/care relationship/i);
   });
 
-  it('stops billing staff from opening clinical notes but allows invoices', async () => {
-    const billing = await signIn('billing@medisync.test');
-    expect((await billing.get(`/api/v1/patients/${graceId}/summary`)).status).toBe(403);
-    expect((await billing.get(`/api/v1/invoices?patientId=${graceId}`)).status).toBe(200);
-    expect((await billing.get('/api/v1/encounters')).status).toBe(403);
+  it('lets a nurse see the ward and department queue but not prescribe', async () => {
+    const nurse = await signIn('nurse@medisync.test');
+    expect((await nurse.get(`/api/v1/patients/${graceId}`)).status).toBe(200);
+    expect((await nurse.get('/api/v1/wards')).status).toBe(200);
+
+    const encounter = await prisma.encounter.findFirst({ where: { patientId: graceId, status: 'OPEN' } });
+    const denied = await nurse.post(`/api/v1/encounters/${encounter!.id}/prescriptions`).send({
+      items: [{ drugId: 'x', dose: '1', frequency: 'daily', quantity: 1 }],
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.message).toMatch(/prescription\.write/);
+  });
+
+  it('stops finance opening clinical notes but allows invoices', async () => {
+    const finance = await signIn('billing@medisync.test');
+    expect((await finance.get(`/api/v1/patients/${graceId}/summary`)).status).toBe(403);
+    expect((await finance.get(`/api/v1/invoices?patientId=${graceId}`)).status).toBe(200);
+    expect((await finance.get('/api/v1/encounters')).status).toBe(403);
   });
 
   it('serves auditors only de-identified patient data', async () => {
@@ -94,7 +133,7 @@ describe('role-based access control (server side)', () => {
     expect(res.body.error.message).toMatch(/CSRF/i);
   });
 
-  it('lets reception register a patient but not open the audit trail', async () => {
+  it('lets front desk register a patient but not open the audit trail', async () => {
     const reception = await signIn('reception@medisync.test');
     const created = await reception
       .post('/api/v1/patients')
