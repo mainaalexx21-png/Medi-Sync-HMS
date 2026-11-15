@@ -5,19 +5,15 @@ import { ApiError } from '../lib/api';
 import { landingFor, useAuth } from '../lib/auth';
 import { Alert, Button, Card, Field, Input } from '../components/ui';
 
+const DEMO_PASSWORD = 'MediSync#2026';
+
+/** One demo login per staff role. All five exist in the seeded database. */
 const DEMO_ACCOUNTS = [
-  { role: 'Front desk · receptionist', email: 'reception@medisync.test' },
-  { role: 'Front desk · records', email: 'records@medisync.test' },
-  { role: 'Clinical · doctor', email: 'doctor.amina@medisync.test' },
-  { role: 'Clinical · nurse', email: 'nurse@medisync.test' },
-  { role: 'Diagnostics · lab', email: 'lab@medisync.test' },
-  { role: 'Diagnostics · imaging', email: 'radiology@medisync.test' },
-  { role: 'Diagnostics · pharmacy', email: 'pharmacist@medisync.test' },
-  { role: 'Finance · billing', email: 'billing@medisync.test' },
-  { role: 'Finance · HR & rota', email: 'hr@medisync.test' },
-  { role: 'System admin', email: 'admin.it@medisync.test' },
-  { role: 'Patient', email: 'grace@example.test' },
-  { role: 'Guardian', email: 'guardian@example.test' },
+  { role: 'FRONT_DESK', label: 'Front desk & patient services', email: 'reception@medisync.test' },
+  { role: 'CLINICAL', label: 'Clinical staff (doctor)', email: 'doctor.amina@medisync.test' },
+  { role: 'DIAGNOSTICS', label: 'Diagnostics & pharmacy', email: 'pharmacist@medisync.test' },
+  { role: 'FINANCE', label: 'Finance & administration', email: 'billing@medisync.test' },
+  { role: 'SYSTEM_ADMIN', label: 'System administration & audit', email: 'admin.it@medisync.test' },
 ];
 
 export default function Login() {
@@ -194,32 +190,40 @@ export default function Login() {
               </div>
 
               <details className="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-                <summary className="cursor-pointer font-medium text-slate-700">Demo accounts (development)</summary>
+                <summary className="cursor-pointer font-medium text-slate-700">Demo logins (development)</summary>
                 <p className="mt-2">
-                  Password for all demo users: <code className="rounded bg-white px-1 py-0.5">MediSync#2026</code>
+                  One account per role, seeded in the database. Password for all five:{' '}
+                  <code className="rounded bg-white px-1 py-0.5">{DEMO_PASSWORD}</code>
                 </p>
-                <p className="mt-1">
-                  Staff MFA code: use the authenticator secret <code className="rounded bg-white px-1 py-0.5">JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP</code>,
-                  or fetch the current code with <code className="rounded bg-white px-1 py-0.5">GET /api/v1/auth/dev/totp/&lt;email&gt;</code> (disabled in production).
-                </p>
-                <ul className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+                <ul className="mt-2 space-y-2">
                   {DEMO_ACCOUNTS.map((account) => (
-                    <li key={account.email} className="flex flex-col">
-                      <span className="font-medium text-slate-700">{account.role}</span>
-                      <button
-                        type="button"
-                        className="truncate text-left text-brand-700 hover:underline"
-                        onClick={() => {
-                          setEmail(account.email);
-                          setPassword('MediSync#2026');
-                          setPortal(account.role === 'Patient' || account.role === 'Guardian' ? 'patient' : 'staff');
-                        }}
-                      >
-                        {account.email}
-                      </button>
+                    <li key={account.role} className="rounded-lg bg-white/70 p-2">
+                      <p className="font-semibold text-slate-700">
+                        {account.role}
+                        <span className="ml-1 font-normal text-slate-500">{account.label}</span>
+                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                        <button
+                          type="button"
+                          className="truncate text-left text-brand-700 hover:underline"
+                          title="Fill the form with these credentials"
+                          onClick={() => {
+                            setEmail(account.email);
+                            setPassword(DEMO_PASSWORD);
+                            setPortal('staff');
+                          }}
+                        >
+                          {account.email}
+                        </button>
+                        <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] text-slate-600">{DEMO_PASSWORD}</code>
+                      </div>
                     </li>
                   ))}
                 </ul>
+                <p className="mt-2">
+                  Staff MFA code: use the authenticator secret <code className="rounded bg-white px-1 py-0.5">JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP</code>,
+                  or fetch the current code with <code className="rounded bg-white px-1 py-0.5">GET /api/v1/auth/dev/totp/&lt;email&gt;</code> (disabled in production).
+                </p>
               </details>
             </Card>
           ) : (
