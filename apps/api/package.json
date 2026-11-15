@@ -16,7 +16,8 @@
     "db:setup": "prisma db push && tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "db:supabase": "node ../../scripts/db-target.mjs postgres",
-    "db:sqlite": "node ../../scripts/db-target.mjs sqlite"
+    "db:sqlite": "node ../../scripts/db-target.mjs sqlite",
+    "db:check": "tsx prisma/check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

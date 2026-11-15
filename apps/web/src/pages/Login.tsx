@@ -16,6 +16,26 @@ const DEMO_ACCOUNTS = [
   { role: 'SYSTEM_ADMIN', label: 'System administration & audit', email: 'admin.it@medisync.test' },
 ];
 
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2.75" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path d="M3 3l18 18" strokeLinecap="round" />
+      <path d="M10.6 6.1A10.4 10.4 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.2 4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6.3 7.8A16.6 16.6 0 0 0 2.5 12s3.5 6.5 9.5 6.5a9.7 9.7 0 0 0 4-.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Login() {
   const { me, login, verifyMfa, loading } = useAuth();
   const navigate = useNavigate();
@@ -28,6 +48,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (!loading && me) return <Navigate to={landingFor(me)} replace />;
 
@@ -166,15 +187,28 @@ export default function Login() {
                   />
                 </Field>
                 <Field label="Password" htmlFor="password" required>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="pr-11"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-slate-500 transition hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-600"
+                    >
+                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
                 </Field>
                 {error && <Alert tone="danger">{error}</Alert>}
                 <Button type="submit" loading={busy} className="w-full">
