@@ -27,6 +27,107 @@ function loadDotEnv() {
 }
 loadDotEnv();
 
+// Prisma's `directUrl` is used by `prisma migrate`; the runtime client only
+// needs `url`. Defaulting it here means one connection string is enough to boot.
+if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
+  process.env.DIRECT_URL = process.env.DATABASE_URL;
+}
+
+/**
+ * Locate apps/api/prisma from both `src` (tsx dev) and `dist/src` (compiled),
+ * where __dirname differs by one level.
+ */
+function resolvePrismaDir(): string | null {
+  const candidates: string[] = [];
+  let dir = __dirname;
+  for (let depth = 0; depth < 4; depth += 1) {
+    candidates.push(path.join(dir, 'prisma'));
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  candidates.push(path.join(process.cwd(), 'prisma'));
+  return candidates.find((candidate) => fs.existsSync(path.join(candidate, 'schema.prisma'))) ?? null;
+}
+
+/** Which datasource the Prisma client was last generated for (see scripts/db-target.mjs). */
+function readDbTarget(): 'postgres' | 'sqlite' | null {
+  const prismaDir = resolvePrismaDir();
+  if (!prismaDir) return null;
+  try {
+    const marker = fs.readFileSync(path.join(prismaDir, '.db-target'), 'utf8').trim();
+    return marker === 'postgres' || marker === 'sqlite' ? marker : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fail fast, with an actionable message, on the two mistakes that otherwise
+ * surface as an opaque Prisma error on the first request:
+ *   1. a password with unescaped reserved characters in the connection string;
+ *   2. a URL that does not match the datasource the client was generated for
+ *      (SQLite for the test suite, PostgreSQL for Supabase).
+ */
+function assertDatabaseUrl() {
+  const raw = (process.env.DATABASE_URL ?? '').trim();
+  if (!raw) {
+    throw new Error(
+      'DATABASE_URL is not set. Copy apps/api/.env.example to apps/api/.env first ' +
+        '(Supabase PostgreSQL URL, or file:./dev.db for the test suite).',
+    );
+  }
+
+  const generated = readDbTarget();
+
+  if (raw.startsWith('file:')) {
+    if (generated === 'postgres') {
+      throw new Error(
+        'DATABASE_URL is a SQLite file but the Prisma client is generated for PostgreSQL. ' +
+          'Run "npm run db:sqlite" for the test suite, or point DATABASE_URL at PostgreSQL and run "npm run db:supabase".',
+      );
+    }
+    return;
+  }
+
+  if (!/^postgres(ql)?:\/\//i.test(raw)) {
+    throw new Error(
+      'Unsupported DATABASE_URL. Use a postgresql:// URL (e.g. Supabase) or "file:./dev.db" for the test suite.',
+    );
+  }
+
+  if (raw.includes('#')) {
+    throw new Error(
+      'DATABASE_URL contains "#", which truncates everything after it. ' +
+        'Percent-encode reserved characters in the password: # -> %23, @ -> %40, ? -> %3F, / -> %2F, space -> %20.',
+    );
+  }
+  const afterScheme = raw.slice(raw.indexOf('://') + 3);
+  if ((afterScheme.match(/@/g) ?? []).length > 1) {
+    throw new Error(
+      'DATABASE_URL contains more than one "@": the password has an unescaped @. Encode it as %40, e.g. ' +
+        'postgresql://postgres.abcdef:pa%40ssword@aws-0-eu-central-1.pooler.supabase.com:5432/postgres',
+    );
+  }
+  try {
+    new URL(raw);
+  } catch {
+    throw new Error(
+      'DATABASE_URL is not a valid URL. Percent-encode reserved characters in the password ' +
+        '(# -> %23, @ -> %40, ? -> %3F, / -> %2F, space -> %20).',
+    );
+  }
+
+  if (generated === 'sqlite') {
+    throw new Error(
+      'DATABASE_URL points at PostgreSQL but the Prisma client is generated for SQLite (the test target). ' +
+        'Run "npm run db:supabase" to generate for PostgreSQL, apply the schema and seed the demo data.',
+    );
+  }
+}
+
+assertDatabaseUrl();
+
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 const isProd = nodeEnv === 'production';
 const isTest = nodeEnv === 'test';

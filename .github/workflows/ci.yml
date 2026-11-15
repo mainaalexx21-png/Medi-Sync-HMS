@@ -13,13 +13,13 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
       - name: Typecheck API
         run: npm run build --workspace=apps/api
-      - name: Prepare test database
-        working-directory: apps/api
-        env:
-          DATABASE_URL: file:./test.db
-        run: npx prisma db push --skip-generate
+      # The test global setup derives the SQLite schema and client itself, so no
+      # database service or prepare step is needed.
       - name: Tests
         working-directory: apps/api
         env:

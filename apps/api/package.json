@@ -14,7 +14,9 @@
     "db:push": "prisma db push --skip-generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "prisma db push && tsx prisma/seed.ts",
-    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts"
+    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
+    "db:supabase": "node ../../scripts/db-target.mjs postgres",
+    "db:sqlite": "node ../../scripts/db-target.mjs sqlite"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

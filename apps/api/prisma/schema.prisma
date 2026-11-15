@@ -6,8 +6,11 @@
 // instead of native DB enums, no provider-specific types, and no native
 // full-text search index (search uses indexed LIKE queries).
 //
-// Switch to PostgreSQL by setting DATABASE_URL=postgresql://... and changing
-// `provider` to "postgresql", then `prisma migrate dev`.
+// This schema targets PostgreSQL (Supabase or any PostgreSQL 14+). The test
+// suite runs on SQLite instead: it derives prisma/schema.sqlite.prisma (same
+// models, provider sqlite) and generates its own client, because Prisma bakes
+// the provider into the generated client. `npm run db:sqlite` does the same for
+// manual offline work; `npm run db:supabase` switches back to PostgreSQL.
 
 generator client {
   provider = "prisma-client-js"

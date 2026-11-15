@@ -8,6 +8,8 @@ build/
 *.db-journal
 apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
+apps/api/prisma/schema.sqlite.prisma
+apps/api/prisma/.db-target
 apps/api/uploads/*
 !apps/api/uploads/.gitkeep
 coverage/
